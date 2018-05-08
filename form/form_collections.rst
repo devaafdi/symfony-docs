@@ -301,13 +301,13 @@ new "tag" forms. To render it, make the following change to your template:
 
     .. code-block:: html+twig
 
-        <ul class="tags" data-prototype="{{ form_widget(form.tags.vars.prototype)|e('html_attr') }}">
+        <ul class="collection" id="tags" data-prototype="{{ form_widget(form.tags.vars.prototype)|e('html_attr') }}">
             ...
         </ul>
 
     .. code-block:: html+php
 
-        <ul class="tags" data-prototype="<?php
+        <ul class="collection" id="tags" data-prototype="<?php
             echo $view->escape($view['form']->row($form['tags']->vars['prototype']))
         ?>">
             ...
@@ -335,7 +335,7 @@ On the rendered page, the result will look something like this:
 
 .. code-block:: html
 
-    <ul class="tags" data-prototype="&lt;div&gt;&lt;label class=&quot; required&quot;&gt;__name__&lt;/label&gt;&lt;div id=&quot;task_tags___name__&quot;&gt;&lt;div&gt;&lt;label for=&quot;task_tags___name___name&quot; class=&quot; required&quot;&gt;Name&lt;/label&gt;&lt;input type=&quot;text&quot; id=&quot;task_tags___name___name&quot; name=&quot;task[tags][__name__][name]&quot; required=&quot;required&quot; maxlength=&quot;255&quot; /&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;">
+    <ul class="collection" id="tags" data-prototype="&lt;div&gt;&lt;label class=&quot; required&quot;&gt;__name__&lt;/label&gt;&lt;div id=&quot;task_tags___name__&quot;&gt;&lt;div&gt;&lt;label for=&quot;task_tags___name___name&quot; class=&quot; required&quot;&gt;Name&lt;/label&gt;&lt;input type=&quot;text&quot; id=&quot;task_tags___name___name&quot; name=&quot;task[tags][__name__][name]&quot; required=&quot;required&quot; maxlength=&quot;255&quot; /&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;">
 
 The goal of this section will be to use JavaScript to read this attribute
 and dynamically add new tag forms when the user clicks a "Add a tag" link.
@@ -351,30 +351,41 @@ will be show next):
 .. code-block:: javascript
 
     var $collectionHolder;
+    var $initialIndex = [];
 
     // setup an "add a tag" link
-    var $addTagLink = $('<a href="#" class="add_tag_link">Add a tag</a>');
-    var $newLinkLi = $('<li></li>').append($addTagLink);
+    var $addTagLink = $('<a href="#" class="add_tag_link">Add an item</a>');
+    var $newLinkLi = $('<li class="added_link"></li>').append($addTagLink);
 
     jQuery(document).ready(function() {
-        // Get the ul that holds the collection of tags
-        $collectionHolder = $('ul.tags');
+    // Get the ul that holds the collection of tags
+    $collectionHolder = $('ul.collection');
 
-        // add the "add a tag" anchor and li to the tags ul
-        $collectionHolder.append($newLinkLi);
-
-        // count the current form inputs we have (e.g. 2), use that as the new
-        // index when inserting a new item (e.g. 2)
-        $collectionHolder.data('index', $collectionHolder.find(':input').length);
-
-        $addTagLink.on('click', function(e) {
-            // prevent the link from creating a "#" on the URL
-            e.preventDefault();
-
-            // add a new tag form (see next code block)
-            addTagForm($collectionHolder, $newLinkLi);
-        });
+    // set an object to hold id and index of all prototype element (multiple collection form).
+    $collectionHolder.each(function()
+    {
+        var $id = '#' + $(this).attr('id');
+        var $idSelector = $($id);
+        $initialIndex.push({
+            // id of each collection
+            id : $id,
+            // count the current form inputs we have (e.g. 2), use that as the new
+            // index when inserting a new item (e.g. 2)
+            index : $idSelector.find(':input').length
+            });
     });
+
+    // add the "add a tag" anchor and li to the tags ul
+    $collectionHolder.append($newLinkLi);
+
+    $('.add_tag_link').on('click', function(e) {
+        // prevent the link from creating a "#" on the URL
+        e.preventDefault();
+
+        // add a new tag form (see next code block)
+        addTagForm($collectionHolder, $initialIndex, $(this).closest(".collection").attr('id'));
+    });
+});
 
 The ``addTagForm()`` function's job will be to use the ``data-prototype`` attribute
 to dynamically add a new form when this link is clicked. The ``data-prototype``
@@ -387,30 +398,34 @@ one example:
 
 .. code-block:: javascript
 
-    function addTagForm($collectionHolder, $newLinkLi) {
-        // Get the data-prototype explained earlier
-        var prototype = $collectionHolder.data('prototype');
+    function addTagForm($collectionHolder, $initialIndex ,$idElement) {
+    var keyArray = 0;
+    $.each($initialIndex, function(i, value){
+       if(value.id === '#' + $idElement){
+           // find the index of array that match with the id
+           keyArray = i;
+       }
+    });
+    // get the new index from initialIndex Obj
+    var index = $initialIndex[keyArray].index;
 
-        // get the new index
-        var index = $collectionHolder.data('index');
+    var newForm = $($initialIndex[keyArray].id).data('prototype');
+    // You need this only if you didn't set 'label' => false in your tags field in TaskType
+    // Replace '__name__label__' in the prototype's HTML to
+    // instead be a number based on how many items we have
+    // newForm = newForm.replace(/__name__label__/g, index);
 
-        var newForm = prototype;
-        // You need this only if you didn't set 'label' => false in your tags field in TaskType
-        // Replace '__name__label__' in the prototype's HTML to
-        // instead be a number based on how many items we have
-        // newForm = newForm.replace(/__name__label__/g, index);
+    // Replace '__name__' in the prototype's HTML to
+    // instead be a number based on how many items we have
+    newForm = newForm.replace(/__name__/g, index);
 
-        // Replace '__name__' in the prototype's HTML to
-        // instead be a number based on how many items we have
-        newForm = newForm.replace(/__name__/g, index);
+    // increase the index with one for the next item
+    $initialIndex[keyArray].index = index + 1;
 
-        // increase the index with one for the next item
-        $collectionHolder.data('index', index + 1);
-
-        // Display the form in the page in an li, before the "Add a tag" link li
-        var $newFormLi = $('<li></li>').append(newForm);
-        $newLinkLi.before($newFormLi);
-    }
+    // Display the form in the page in an li, before the "Add a tag" link li
+    var $newFormLi = $('<li></li>').append(newForm);
+    $($initialIndex[keyArray].id +' .added_link').before($newFormLi);
+}
 
 .. note::
 
